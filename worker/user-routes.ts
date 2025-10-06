@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import type { Env } from './core-utils';
-import { ProductEntity, CategoryEntity, ClientEntity, SaleEntity, SaleItemEntity, SupplierEntity, SupplierOrderEntity, SupplierOrderItemEntity, TransactionEntity, TransactionCategoryEntity } from "./entities";
+import { ProductEntity, CategoryEntity, ClientEntity, SaleEntity, SaleItemEntity, SupplierEntity, SupplierOrderEntity, SupplierOrderItemEntity, TransactionEntity, TransactionCategoryEntity, UserEntity, RoleEntity, PermissionEntity, ProductMovementEntity } from "./entities";
 import { ok, bad, notFound } from './core-utils';
-import type { Product, Category, Client, Sale, SaleItem, Supplier, SupplierOrder, SupplierOrderItem, Transaction, TransactionCategory } from "@shared/types";
+import type { Product, Category, Client, Sale, SaleItem, Supplier, SupplierOrder, SupplierOrderItem, Transaction, TransactionCategory, User, Role, Permission } from "@shared/types";
 export function userRoutes(app: Hono<{ Bindings: Env }>) {
   // Ensure seed data is present on first load
   app.use('/api/*', async (c, next) => {
@@ -17,6 +17,10 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
       SupplierOrderItemEntity.ensureSeed(c.env),
       TransactionEntity.ensureSeed(c.env),
       TransactionCategoryEntity.ensureSeed(c.env),
+      UserEntity.ensureSeed(c.env),
+      RoleEntity.ensureSeed(c.env),
+      PermissionEntity.ensureSeed(c.env),
+      ProductMovementEntity.ensureSeed(c.env),
     ]);
     await next();
   });
@@ -81,17 +85,48 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
   });
   // SUPPLIER ORDERS API
   app.get('/api/supplier-orders', async (c) => ok(c, await SupplierOrderEntity.list(c.env)));
+  app.get('/api/supplier-orders/:id/items', async (c) => {
+    const { id } = c.req.param();
+    const allItems = await SupplierOrderItemEntity.list(c.env);
+    const orderItems = allItems.items.filter(item => item.supplierOrderId === id);
+    return ok(c, { items: orderItems, next: null });
+  });
   app.post('/api/supplier-orders', async (c) => {
-    const { orderData, itemsData } = await c.req.json<{ orderData: Omit<SupplierOrder, 'id' | 'createdAt' | 'updatedAt'>, itemsData: Omit<SupplierOrderItem, 'id' | 'supplierOrderId' | 'createdAt' | 'updatedAt'>[] }>();
+    const { orderData, itemsData } = await c.req.json<{ orderData: Omit<SupplierOrder, 'id' | 'createdAt' | 'updatedAt'>, itemsData: Omit<SupplierOrderItem, 'id' | 'supplierOrderId'>[] }>();
     const newOrder: SupplierOrder = { ...SupplierOrderEntity.initialState, ...orderData, id: crypto.randomUUID(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
     const createdOrder = await SupplierOrderEntity.create(c.env, newOrder);
     const orderItems: SupplierOrderItem[] = [];
     for (const item of itemsData) {
-        const newOrderItem: SupplierOrderItem = { ...SupplierOrderItemEntity.initialState, ...item, id: crypto.randomUUID(), supplierOrderId: newOrder.id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+        const newOrderItem: SupplierOrderItem = { ...SupplierOrderItemEntity.initialState, ...item, id: crypto.randomUUID(), supplierOrderId: newOrder.id };
         await SupplierOrderItemEntity.create(c.env, newOrderItem);
         orderItems.push(newOrderItem);
     }
     return ok(c, { order: createdOrder, items: orderItems });
+  });
+  app.put('/api/supplier-orders/:id', async (c) => {
+    const { id } = c.req.param();
+    const { orderData, itemsData } = await c.req.json<{ orderData: Partial<SupplierOrder>, itemsData: Partial<SupplierOrderItem>[] }>();
+    const orderEntity = new SupplierOrderEntity(c.env, id);
+    if (!await orderEntity.exists()) return notFound(c, 'Supplier order not found');
+    const updatedOrder = await orderEntity.mutate(current => ({ ...current, ...orderData, id, updatedAt: new Date().toISOString() }));
+    const allItems = await SupplierOrderItemEntity.list(c.env);
+    const oldItems = allItems.items.filter(item => item.supplierOrderId === id);
+    await SupplierOrderItemEntity.deleteMany(c.env, oldItems.map(item => item.id));
+    const newOrderItems: SupplierOrderItem[] = [];
+    for (const item of itemsData) {
+      const newOrderItem: SupplierOrderItem = { ...SupplierOrderItemEntity.initialState, ...item, id: crypto.randomUUID(), supplierOrderId: id };
+      await SupplierOrderItemEntity.create(c.env, newOrderItem);
+      newOrderItems.push(newOrderItem);
+    }
+    return ok(c, { order: updatedOrder, items: newOrderItems });
+  });
+  app.delete('/api/supplier-orders/:id', async (c) => {
+    const { id } = c.req.param();
+    const allItems = await SupplierOrderItemEntity.list(c.env);
+    const oldItems = allItems.items.filter(item => item.supplierOrderId === id);
+    await SupplierOrderItemEntity.deleteMany(c.env, oldItems.map(item => item.id));
+    const deleted = await SupplierOrderEntity.delete(c.env, id);
+    return ok(c, { id, deleted });
   });
   // FINANCIALS API
   app.get('/api/transactions', async (c) => ok(c, await TransactionEntity.list(c.env)));
@@ -122,12 +157,12 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     return ok(c, { items: saleItems, next: null });
   });
   app.post('/api/sales', async (c) => {
-    const { saleData, itemsData } = await c.req.json<{ saleData: Omit<Sale, 'id' | 'createdAt' | 'updatedAt'>, itemsData: Omit<SaleItem, 'id' | 'saleId' | 'createdAt' | 'updatedAt'>[] }>();
+    const { saleData, itemsData } = await c.req.json<{ saleData: Omit<Sale, 'id' | 'createdAt' | 'updatedAt'>, itemsData: Omit<SaleItem, 'id' | 'saleId'>[] }>();
     const newSale: Sale = { ...SaleEntity.initialState, ...saleData, id: crypto.randomUUID(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
     const createdSale = await SaleEntity.create(c.env, newSale);
     const saleItems: SaleItem[] = [];
     for (const item of itemsData) {
-        const newSaleItem: SaleItem = { ...SaleItemEntity.initialState, ...item, id: crypto.randomUUID(), saleId: newSale.id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+        const newSaleItem: SaleItem = { ...SaleItemEntity.initialState, ...item, id: crypto.randomUUID(), saleId: newSale.id };
         await SaleItemEntity.create(c.env, newSaleItem);
         saleItems.push(newSaleItem);
     }
@@ -139,13 +174,12 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     const saleEntity = new SaleEntity(c.env, id);
     if (!await saleEntity.exists()) return notFound(c, 'Sale not found');
     const updatedSale = await saleEntity.mutate(current => ({ ...current, ...saleData, id, updatedAt: new Date().toISOString() }));
-    // Simple approach: delete old items, create new ones.
     const allItems = await SaleItemEntity.list(c.env);
     const oldItems = allItems.items.filter(item => item.saleId === id);
     await SaleItemEntity.deleteMany(c.env, oldItems.map(item => item.id));
     const newSaleItems: SaleItem[] = [];
     for (const item of itemsData) {
-      const newSaleItem: SaleItem = { ...SaleItemEntity.initialState, ...item, id: crypto.randomUUID(), saleId: id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      const newSaleItem: SaleItem = { ...SaleItemEntity.initialState, ...item, id: crypto.randomUUID(), saleId: id };
       await SaleItemEntity.create(c.env, newSaleItem);
       newSaleItems.push(newSaleItem);
     }
@@ -158,5 +192,62 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     await SaleItemEntity.deleteMany(c.env, oldItems.map(item => item.id));
     const deleted = await SaleEntity.delete(c.env, id);
     return ok(c, { id, deleted });
+  });
+  // USERS API
+  app.get('/api/users', async (c) => ok(c, await UserEntity.list(c.env)));
+  app.post('/api/users', async (c) => {
+    const body = await c.req.json<Omit<User, 'id' | 'createdAt' | 'updatedAt'>>();
+    const newUser: User = { ...UserEntity.initialState, ...body, id: crypto.randomUUID(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    return ok(c, await UserEntity.create(c.env, newUser));
+  });
+  app.put('/api/users/:id', async (c) => {
+    const { id } = c.req.param();
+    const body = await c.req.json<Partial<User>>();
+    const entity = new UserEntity(c.env, id);
+    if (!await entity.exists()) return notFound(c, 'User not found');
+    const updated = await entity.mutate(current => ({ ...current, ...body, id, updatedAt: new Date().toISOString() }));
+    return ok(c, updated);
+  });
+  app.delete('/api/users/:id', async (c) => {
+    const { id } = c.req.param();
+    return ok(c, { id, deleted: await UserEntity.delete(c.env, id) });
+  });
+  // ROLES API
+  app.get('/api/roles', async (c) => ok(c, await RoleEntity.list(c.env)));
+  app.post('/api/roles', async (c) => {
+    const body = await c.req.json<Omit<Role, 'id' | 'createdAt' | 'updatedAt'>>();
+    const newRole: Role = { ...RoleEntity.initialState, ...body, id: crypto.randomUUID(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    return ok(c, await RoleEntity.create(c.env, newRole));
+  });
+  app.put('/api/roles/:id', async (c) => {
+    const { id } = c.req.param();
+    const body = await c.req.json<Partial<Role>>();
+    const entity = new RoleEntity(c.env, id);
+    if (!await entity.exists()) return notFound(c, 'Role not found');
+    const updated = await entity.mutate(current => ({ ...current, ...body, id, updatedAt: new Date().toISOString() }));
+    return ok(c, updated);
+  });
+  app.delete('/api/roles/:id', async (c) => {
+    const { id } = c.req.param();
+    return ok(c, { id, deleted: await RoleEntity.delete(c.env, id) });
+  });
+  // PERMISSIONS API
+  app.get('/api/permissions', async (c) => ok(c, await PermissionEntity.list(c.env)));
+  app.post('/api/permissions', async (c) => {
+    const body = await c.req.json<Omit<Permission, 'id' | 'createdAt' | 'updatedAt'>>();
+    const newPermission: Permission = { ...PermissionEntity.initialState, ...body, id: crypto.randomUUID(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    return ok(c, await PermissionEntity.create(c.env, newPermission));
+  });
+  app.put('/api/permissions/:id', async (c) => {
+    const { id } = c.req.param();
+    const body = await c.req.json<Partial<Permission>>();
+    const entity = new PermissionEntity(c.env, id);
+    if (!await entity.exists()) return notFound(c, 'Permission not found');
+    const updated = await entity.mutate(current => ({ ...current, ...body, id, updatedAt: new Date().toISOString() }));
+    return ok(c, updated);
+  });
+  app.delete('/api/permissions/:id', async (c) => {
+    const { id } = c.req.param();
+    return ok(c, { id, deleted: await PermissionEntity.delete(c.env, id) });
   });
 }

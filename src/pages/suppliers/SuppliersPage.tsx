@@ -104,6 +104,8 @@ function SupplierOrdersList() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [isOrderFormOpen, setOrderFormOpen] = useState(false);
+  const [isConfirmDeleteDialogOpen, setConfirmDeleteDialogOpen] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<SupplierOrder | undefined>(undefined);
   const supplierMap = useMemo(() => {
     return new Map(suppliers.map(s => [s.id, s.companyName]));
   }, [suppliers]);
@@ -127,8 +129,21 @@ function SupplierOrdersList() {
   useEffect(() => {
     fetchData();
   }, []);
-  const handleOrderFormSuccess = () => {
+  const handleFormSuccess = () => {
     fetchData();
+  };
+  const handleDelete = async () => {
+    if (!selectedOrder) return;
+    try {
+      await api(`/api/supplier-orders/${selectedOrder.id}`, { method: 'DELETE' });
+      toast.success('Commande fournisseur supprimée avec succès!');
+      fetchData();
+    } catch (error) {
+      toast.error('Erreur lors de la suppression de la commande.');
+    } finally {
+      setConfirmDeleteDialogOpen(false);
+      setSelectedOrder(undefined);
+    }
   };
   const columns: ColumnDef<SupplierOrder>[] = [
     { accessorKey: 'orderNumber', header: 'Numéro' },
@@ -152,12 +167,29 @@ function SupplierOrdersList() {
       header: 'Total',
       cell: ({ row }) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(row.getValue('totalAmount')),
     },
+    {
+      id: 'actions',
+      cell: ({ row }) => {
+        const order = row.original;
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => { setSelectedOrder(order); setOrderFormOpen(true); }}>Modifier</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="text-destructive" onClick={() => { setSelectedOrder(order); setConfirmDeleteDialogOpen(true); }}>Supprimer</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        );
+      },
+    },
   ];
   if (loading) return <Skeleton className="h-96 w-full" />;
   return (
     <div className="space-y-4">
        <div className="flex items-center justify-end">
-        <Button onClick={() => setOrderFormOpen(true)}>
+        <Button onClick={() => { setSelectedOrder(undefined); setOrderFormOpen(true); }}>
           <PlusCircle className="mr-2 h-4 w-4" /> Nouvelle commande
         </Button>
       </div>
@@ -165,9 +197,17 @@ function SupplierOrdersList() {
       <SupplierOrderForm
         isOpen={isOrderFormOpen}
         onOpenChange={setOrderFormOpen}
-        onSuccess={handleOrderFormSuccess}
+        onSuccess={handleFormSuccess}
         suppliers={suppliers}
         products={products}
+        order={selectedOrder}
+      />
+      <DeleteConfirmationDialog
+        isOpen={isConfirmDeleteDialogOpen}
+        onOpenChange={setConfirmDeleteDialogOpen}
+        onConfirm={handleDelete}
+        title="Supprimer la commande"
+        description="Êtes-vous sûr de vouloir supprimer cette commande fournisseur ? Cette action est irréversible."
       />
     </div>
   );

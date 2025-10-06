@@ -34,9 +34,9 @@ const productSchema = z.object({
   name: z.string().min(2, 'Le nom est requis'),
   reference: z.string().min(2, 'La référence est requise'),
   categoryId: z.string().min(1, 'La catégorie est requise'),
-  stockQuantity: z.coerce.number({ invalid_type_error: 'Doit être un nombre' }).int().min(0, 'Le stock doit être positif'),
-  priceSale: z.coerce.number({ invalid_type_error: 'Doit être un nombre' }).min(0, 'Le prix doit être positif'),
-  pricePurchase: z.coerce.number({ invalid_type_error: 'Doit être un nombre' }).min(0, 'Le prix doit être positif'),
+  stockQuantity: z.coerce.number({ invalid_type_message: 'Doit être un nombre' }).int().min(0, 'Le stock doit être positif'),
+  priceSale: z.coerce.number({ invalid_type_message: 'Doit être un nombre' }).min(0, 'Le prix doit être positif'),
+  pricePurchase: z.coerce.number({ invalid_type_message: 'Doit être un nombre' }).min(0, 'Le prix doit être positif'),
   status: z.enum(['active', 'inactive', 'archived']),
 });
 type ProductFormValues = z.infer<typeof productSchema>;

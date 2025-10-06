@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
 const transactionSchema = z.object({
   description: z.string().min(2, 'La description est requise'),
-  amount: z.coerce.number({ invalid_type_error: 'Doit être un nombre' }).positive('Le montant doit être positif'),
+  amount: z.coerce.number({ invalid_type_message: 'Doit être un nombre' }).positive('Le montant doit être positif'),
   type: z.enum(['revenue', 'expense']),
   categoryId: z.string().min(1, 'La catégorie est requise'),
   paymentMethod: z.string().min(1, 'Méthode de paiement requise'),

@@ -1,6 +1,6 @@
 import { IndexedEntity } from "./core-utils";
-import type { Product, Category, Client, Sale, SaleItem, Supplier, SupplierOrder, SupplierOrderItem, Transaction, TransactionCategory } from "@shared/types";
-import { MOCK_PRODUCTS, MOCK_CATEGORIES, MOCK_CLIENTS, MOCK_SALES, MOCK_SALE_ITEMS, MOCK_SUPPLIERS, MOCK_SUPPLIER_ORDERS, MOCK_SUPPLIER_ORDER_ITEMS, MOCK_TRANSACTIONS, MOCK_TRANSACTION_CATEGORIES } from "@shared/mock-data";
+import type { Product, Category, Client, Sale, SaleItem, Supplier, SupplierOrder, SupplierOrderItem, Transaction, TransactionCategory, User, Role, Permission, ProductMovement } from "@shared/types";
+import { MOCK_PRODUCTS, MOCK_CATEGORIES, MOCK_CLIENTS, MOCK_SALES, MOCK_SALE_ITEMS, MOCK_SUPPLIERS, MOCK_SUPPLIER_ORDERS, MOCK_SUPPLIER_ORDER_ITEMS, MOCK_TRANSACTIONS, MOCK_TRANSACTION_CATEGORIES, MOCK_USERS, MOCK_ROLES, MOCK_PERMISSIONS, MOCK_PRODUCT_MOVEMENTS } from "@shared/mock-data";
 export class ProductEntity extends IndexedEntity<Product> {
   static readonly entityName = "product";
   static readonly indexName = "products";
@@ -78,4 +78,36 @@ export class TransactionCategoryEntity extends IndexedEntity<TransactionCategory
     id: "", name: "", type: "expense", createdAt: "", updatedAt: "",
   };
   static seedData = MOCK_TRANSACTION_CATEGORIES;
+}
+export class UserEntity extends IndexedEntity<User> {
+  static readonly entityName = "user";
+  static readonly indexName = "users";
+  static readonly initialState: User = {
+    id: "", firstName: "", lastName: "", email: "", passwordHash: "", roleId: "", status: "inactive", createdAt: "", updatedAt: "",
+  };
+  static seedData = MOCK_USERS;
+}
+export class RoleEntity extends IndexedEntity<Role> {
+  static readonly entityName = "role";
+  static readonly indexName = "roles";
+  static readonly initialState: Role = {
+    id: "", name: "", createdAt: "", updatedAt: "",
+  };
+  static seedData = MOCK_ROLES;
+}
+export class PermissionEntity extends IndexedEntity<Permission> {
+  static readonly entityName = "permission";
+  static readonly indexName = "permissions";
+  static readonly initialState: Permission = {
+    id: "", roleId: "", module: "", canCreate: false, canRead: false, canUpdate: false, canDelete: false, createdAt: "", updatedAt: "",
+  };
+  static seedData = MOCK_PERMISSIONS;
+}
+export class ProductMovementEntity extends IndexedEntity<ProductMovement> {
+  static readonly entityName = "productMovement";
+  static readonly indexName = "productMovements";
+  static readonly initialState: ProductMovement = {
+    id: "", productId: "", type: "adjustment", quantity: 0, date: "", userId: "", createdAt: "", updatedAt: "",
+  };
+  static seedData = MOCK_PRODUCT_MOVEMENTS;
 }

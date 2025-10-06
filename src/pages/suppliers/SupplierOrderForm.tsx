@@ -8,15 +8,16 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { api } from '@/lib/api-client';
-import type { Supplier, Product, SupplierOrder, SupplierOrderItem } from '@shared/types';
+import type { Supplier, Product, SupplierOrder, SupplierOrderItem, PaginatedResponse } from '@shared/types';
 import { toast } from 'sonner';
 import { PlusCircle, Trash2 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 const orderItemSchema = z.object({
+  id: z.string().optional(),
   productId: z.string().min(1, "Produit requis"),
-  quantity: z.coerce.number().min(1, "Qté > 0"),
-  unitPrice: z.coerce.number(),
-  totalPrice: z.coerce.number(),
+  quantity: z.coerce.number({ invalid_type_message: 'Doit être un nombre' }).min(1, "Qté > 0"),
+  unitPrice: z.coerce.number({ invalid_type_message: 'Doit être un nombre' }),
+  totalPrice: z.coerce.number({ invalid_type_message: 'Doit être un nombre' }),
 });
 const orderSchema = z.object({
   supplierId: z.string().min(1, "Fournisseur requis"),
@@ -30,8 +31,9 @@ interface SupplierOrderFormProps {
   onSuccess: () => void;
   suppliers: Supplier[];
   products: Product[];
+  order?: SupplierOrder;
 }
-export function SupplierOrderForm({ isOpen, onOpenChange, onSuccess, suppliers, products }: SupplierOrderFormProps) {
+export function SupplierOrderForm({ isOpen, onOpenChange, onSuccess, suppliers, products, order }: SupplierOrderFormProps) {
   const form = useForm<OrderFormValues>({
     resolver: zodResolver(orderSchema),
     defaultValues: {
@@ -40,7 +42,7 @@ export function SupplierOrderForm({ isOpen, onOpenChange, onSuccess, suppliers, 
       items: [],
     },
   });
-  const { fields, append, remove } = useFieldArray({
+  const { fields, append, remove, replace } = useFieldArray({
     control: form.control,
     name: "items",
   });
@@ -48,33 +50,58 @@ export function SupplierOrderForm({ isOpen, onOpenChange, onSuccess, suppliers, 
   const items = form.watch('items');
   const totalAmount = items.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
   useEffect(() => {
+    const fetchOrderItems = async (orderId: string) => {
+      try {
+        const orderItems = await api<PaginatedResponse<SupplierOrderItem>>(`/api/supplier-orders/${orderId}/items`);
+        replace(orderItems.items);
+      } catch (error) {
+        toast.error("Erreur lors de la récupération des articles de la commande.");
+      }
+    };
     if (isOpen) {
-      form.reset({
-        supplierId: '',
-        status: 'draft',
-        items: [],
-      });
+      if (order) {
+        form.reset({
+          supplierId: order.supplierId,
+          status: order.status,
+          items: [],
+        });
+        fetchOrderItems(order.id);
+      } else {
+        form.reset({
+          supplierId: '',
+          status: 'draft',
+          items: [],
+        });
+      }
     }
-  }, [isOpen, form]);
+  }, [isOpen, order, form, replace]);
   const onSubmit = async (data: OrderFormValues) => {
     const orderData = {
       ...data,
-      orderNumber: `CMD-F-${Date.now()}`,
+      orderNumber: order?.orderNumber || `CMD-F-${Date.now()}`,
       orderDate: new Date().toISOString(),
       totalAmount,
       createdBy: 'user-1',
     };
     const { items, ...restOfOrderData } = orderData;
     try {
-      await api<{ order: SupplierOrder, items: SupplierOrderItem[] }>('/api/supplier-orders', {
-        method: 'POST',
-        body: JSON.stringify({ orderData: restOfOrderData, itemsData: items }),
-      });
-      toast.success('Commande fournisseur créée avec succès!');
+      if (order) {
+        await api(`/api/supplier-orders/${order.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ orderData: restOfOrderData, itemsData: items }),
+        });
+        toast.success('Commande fournisseur mise à jour avec succès!');
+      } else {
+        await api('/api/supplier-orders', {
+          method: 'POST',
+          body: JSON.stringify({ orderData: restOfOrderData, itemsData: items }),
+        });
+        toast.success('Commande fournisseur créée avec succès!');
+      }
       onSuccess();
       onOpenChange(false);
     } catch (error) {
-      toast.error("Erreur lors de la création de la commande.");
+      toast.error(`Erreur lors de la ${order ? 'mise à jour' : 'création'} de la commande.`);
       console.error(error);
     }
   };
@@ -82,17 +109,17 @@ export function SupplierOrderForm({ isOpen, onOpenChange, onSuccess, suppliers, 
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl">
         <DialogHeader>
-          <DialogTitle>Créer une commande fournisseur</DialogTitle>
+          <DialogTitle>{order ? 'Modifier la commande' : 'Créer une commande fournisseur'}</DialogTitle>
           <DialogDescription>Sélectionnez un fournisseur et ajoutez des produits.</DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField control={form.control} name="supplierId" render={({ field }) => (
-                <FormItem><FormLabel>Fournisseur</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Sélectionner un fournisseur" /></SelectTrigger></FormControl><SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.companyName}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
+                <FormItem><FormLabel>Fournisseur</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Sélectionner un fournisseur" /></SelectTrigger></FormControl><SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.companyName}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
               )} />
               <FormField control={form.control} name="status" render={({ field }) => (
-                <FormItem><FormLabel>Statut</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="draft">Brouillon</SelectItem><SelectItem value="ordered">Commandé</SelectItem></SelectContent></Select><FormMessage /></FormItem>
+                <FormItem><FormLabel>Statut</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="draft">Brouillon</SelectItem><SelectItem value="ordered">Commandé</SelectItem><SelectItem value="received">Reçu</SelectItem><SelectItem value="cancelled">Annulé</SelectItem></SelectContent></Select><FormMessage /></FormItem>
               )} />
             </div>
             <div>
@@ -113,7 +140,7 @@ export function SupplierOrderForm({ isOpen, onOpenChange, onSuccess, suppliers, 
                                 form.setValue(`items.${index}.totalPrice`, product.pricePurchase * qty);
                               }
                               controllerField.onChange(value);
-                            }} defaultValue={controllerField.value}>
+                            }} value={controllerField.value}>
                               <SelectTrigger><SelectValue placeholder="Produit..." /></SelectTrigger>
                               <SelectContent>{products.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
                             </Select>

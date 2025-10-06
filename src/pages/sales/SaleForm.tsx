@@ -15,9 +15,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 const saleItemSchema = z.object({
   id: z.string().optional(), // Keep track of existing items
   productId: z.string().min(1, "Produit requis"),
-  quantity: z.coerce.number().min(1, "Qté > 0"),
-  unitPrice: z.coerce.number(),
-  totalPrice: z.coerce.number(),
+  quantity: z.coerce.number({ invalid_type_message: 'Doit être un nombre' }).min(1, "Qté > 0"),
+  unitPrice: z.coerce.number({ invalid_type_message: 'Doit être un nombre' }),
+  totalPrice: z.coerce.number({ invalid_type_message: 'Doit être un nombre' }),
 });
 const saleSchema = z.object({
   clientId: z.string().min(1, "Client requis"),
